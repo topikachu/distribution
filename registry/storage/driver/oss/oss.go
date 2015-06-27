@@ -214,21 +214,34 @@ func (d *driver) WriteStream(ctx context.Context, path string, offset int64, rea
 	partNumber := 1
 	var uploadContext *osssdk.UploadContext
 	if offset != 0 {
-		uploadContextList, _, err := d.Api.ListMultipartUploads(d.ossPath(path), nil, listMax)
+		header, err := d.Api.GetObjectMetadata(d.ossPath(path))
 		if err != nil {
 			return 0, parseError(path, err)
 		}
-		if len(uploadContextList) == 0 {
-			return 0, errors.New("Can't resume the upload. No existing UploadId")
-		}
-		uploadContext = uploadContextList[0]
-		err = d.Api.FetchMultipartUploadParts(uploadContext)
-		if err != nil {
-			return 0, errors.New("Can't resume the upload. No existing parts")
-		}
-		if int64(len(uploadContext.Parts))*d.ChunkSize < offset {
+
+		length, err := header.GetContentLength()
+		if length < offset {
 			return 0, errors.New("Can't resume the upload. No enough existing parts")
 		}
+		uploadContext, err = d.Api.InitMultipartUpload(d.ossPath(path), d.getContentType())
+		start, end := int64(0), int64(d.ChunkSize-1)
+
+		for {
+			if start >= offset {
+				break
+			}
+			if end >= offset {
+				end = offset - 1
+			}
+			_, err = d.Api.UploadCopyMultipart(uploadContext, "", d.ossPath(path), start, end, partNumber)
+			if err != nil {
+				return 0, err
+			}
+			partNumber++
+			start += d.ChunkSize
+			end += d.ChunkSize
+		}
+
 	} else {
 		uploadContext, err = d.Api.InitMultipartUpload(d.ossPath(path), d.getContentType())
 		if err != nil {
@@ -236,7 +249,6 @@ func (d *driver) WriteStream(ctx context.Context, path string, offset int64, rea
 		}
 	}
 
-	partNumber = int(offset/d.ChunkSize) + 1
 	buffer := make([]byte, d.ChunkSize)
 	totalRead = 0
 	for {
@@ -249,7 +261,7 @@ func (d *driver) WriteStream(ctx context.Context, path string, offset int64, rea
 		}
 		err = d.Api.UploadMultipart(uploadContext, buffer[:n], partNumber)
 		if err != nil {
-			return totalRead, parseError(path, err)
+			return 0, parseError(path, err)
 		}
 		partNumber++
 		totalRead += int64(n)
@@ -325,10 +337,11 @@ func (d *driver) List(ctx context.Context, path string) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		//we need to normalize the "/" to satisfy docker
 		for _, fileName := range fileNames {
 			files = append(files, "/"+fileName)
 		}
-		//we need to change the "/" to satisfy docker
 		for _, folderName := range folderNames {
 			files = append(files, "/"+strings.TrimRight(folderName, "/"))
 		}

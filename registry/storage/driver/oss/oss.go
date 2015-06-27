@@ -90,11 +90,11 @@ func FromParameters(parameters map[string]interface{}) (*Driver, error) {
 	// Providing no values for these is valid in case the user is authenticating
 	// with an IAM on an ec2 instance (in which case the instance credentials will
 	// be summoned when GetAuth is called)
-	accessKeyId, ok := parameters["accessKeyId"]
+	accessKeyId, ok := parameters["accesskey"]
 	if !ok {
 		accessKeyId = ""
 	}
-	accessKeySecret, ok := parameters["accessKeySecret"]
+	accessKeySecret, ok := parameters["secretkey"]
 	if !ok {
 		accessKeySecret = ""
 	}
@@ -157,7 +157,7 @@ func New(params DriverParameters) (*Driver, error) {
 	api := osssdk.New(params.Region, params.AccessKeyId, params.AccessKeySecret, params.Bucket)
 	d := &driver{
 		Api:           api,
-		RootDirectory: params.RootDirectory,
+		RootDirectory: strings.Trim(params.RootDirectory, "/"),
 		ChunkSize:     params.ChunkSize,
 	}
 
@@ -232,7 +232,7 @@ func (d *driver) WriteStream(ctx context.Context, path string, offset int64, rea
 	} else {
 		uploadContext, err = d.Api.InitMultipartUpload(d.ossPath(path), d.getContentType())
 		if err != nil {
-			return 0, errors.New("Can't init upload")
+			return 0, err
 		}
 	}
 
@@ -382,7 +382,7 @@ func (d *driver) URLFor(ctx context.Context, path string, options map[string]int
 }
 
 func (d *driver) ossPath(path string) string {
-	return "/" + strings.TrimRight(d.RootDirectory, "/") + path
+	return d.RootDirectory + "/" + strings.TrimLeft(path, "/")
 }
 
 func parseError(path string, err error) error {

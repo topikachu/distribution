@@ -6,6 +6,7 @@ import (
 	"github.com/docker/distribution/registry/storage/driver/testsuites"
 	"gopkg.in/check.v1"
 	"os"
+	"strconv"
 	"testing"
 )
 
@@ -21,7 +22,11 @@ func init() {
 	bucket := os.Getenv("OSS_BUCKET")
 	region := os.Getenv("OSS_REGION")
 	rootDirectory := os.Getenv("OSS_ROOT_DIRECTORY")
-
+	chunkSizeStr := os.Getenv("OSS_CHUNK_SIZE")
+	chunkSize, err := strconv.ParseInt(chunkSizeStr, 0, 64)
+	if err != nil {
+		chunkSize = defaultChunkSize
+	}
 	ossDriverConstructor := func() (*Driver, error) {
 
 		parameters := DriverParameters{
@@ -30,7 +35,7 @@ func init() {
 			bucket,
 			region,
 			rootDirectory,
-			minChunkSize,
+			chunkSize,
 		}
 
 		return New(parameters)

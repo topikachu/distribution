@@ -239,25 +239,20 @@ func (d *driver) WriteStream(ctx context.Context, path string, offset int64, rea
 	partNumber = int(offset/d.ChunkSize) + 1
 	buffer := make([]byte, d.ChunkSize)
 	totalRead = 0
-	lastPart := false
 	for {
 		n, err := reader.Read(buffer)
 		if err != nil && err != io.EOF {
 			return totalRead, parseError(path, err)
 		}
-		if err == io.EOF {
-			lastPart = true
+		if n == 0 {
+			break
 		}
-		err = d.Api.UploadMultipart(uploadContext, buffer, partNumber)
+		err = d.Api.UploadMultipart(uploadContext, buffer[:n], partNumber)
 		if err != nil {
 			return totalRead, parseError(path, err)
 		}
-
 		partNumber++
 		totalRead += int64(n)
-		if lastPart {
-			break
-		}
 	}
 	err = d.Api.CompleteMultipart(uploadContext)
 	if err != nil {
@@ -330,8 +325,13 @@ func (d *driver) List(ctx context.Context, path string) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		files = append(files, fileNames...)
-		files = append(files, folderNames...)
+		for _, fileName := range fileNames {
+			files = append(files, "/"+fileName)
+		}
+		//we need to change the "/" to satisfy docker
+		for _, folderName := range folderNames {
+			files = append(files, "/"+strings.TrimRight(folderName, "/"))
+		}
 		if marker == "" {
 			break
 		}

@@ -23,7 +23,7 @@ import (
 	storagedriver "github.com/docker/distribution/registry/storage/driver"
 	"github.com/docker/distribution/registry/storage/driver/base"
 	"github.com/docker/distribution/registry/storage/driver/factory"
-	osssdk "github.com/topikachu/oss"
+	osssdk "github.com/topikachu/oss-mini-go-sdk/oss"
 	"io"
 	"io/ioutil"
 	"reflect"

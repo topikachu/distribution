@@ -210,28 +210,56 @@ func (d *driver) ReadStream(ctx context.Context, path string, offset int64) (io.
 // returned. May be used to resume writing a stream by providing a nonzero
 // offset. Offsets past the current size will write from the position
 // beyond the end of the file.
-func (d *driver) WriteStream(ctx context.Context, path string, offset int64, reader io.Reader) (totalRead int64, err error) {
+
+type ZeroReader struct {
+}
+
+func (r *ZeroReader) Read(p []byte) (n int, err error) {
+	n = copy(p, make([]byte, len(p)))
+	return
+}
+
+func (d *driver) WriteStream(ctx context.Context, path string, offset int64, reader io.Reader) (int64, error) {
 	partNumber := 1
-	var uploadContext *osssdk.UploadContext
+	var sourceLeftChunk []byte = nil
+	var zeroChunkSize int64 = 0
+	uploadContext, err := d.Api.InitMultipartUpload(d.ossPath(path), d.getContentType())
+	if err != nil {
+		return 0, err
+	}
 	if offset != 0 {
 		header, err := d.Api.GetObjectMetadata(d.ossPath(path))
 		if err != nil {
 			return 0, parseError(path, err)
 		}
-
 		length, err := header.GetContentLength()
-		if length < offset {
-			return 0, errors.New("Can't resume the upload. No enough existing parts")
+		if err != nil {
+			return 0, errors.New("Can't get origin file length")
 		}
-		uploadContext, err = d.Api.InitMultipartUpload(d.ossPath(path), d.getContentType())
+		// first, let's copy the file as much as possible
+		var endPosition = length
+		if length > offset {
+			// we want to overwrite the file
+			endPosition = offset
+		}
 		start, end := int64(0), int64(d.ChunkSize-1)
-
 		for {
-			if start >= offset {
+			if start >= endPosition {
 				break
 			}
-			if end >= offset {
-				end = offset - 1
+			if end >= endPosition {
+				end = endPosition - 1
+			}
+			//if there no enough data
+			//we can't perform this copy
+			//do the tricky to merge the content with next chunk
+			if end-start+1 < minChunkSize {
+				sourceLeftReader, _, err := d.Api.GetObjectRange(d.ossPath(path), start, end)
+				if err != nil {
+					return 0, err
+				}
+				sourceLeftChunk = sourceLeftReader.Bytes()
+				break
 			}
 			_, err = d.Api.UploadCopyMultipart(uploadContext, "", d.ossPath(path), start, end, partNumber)
 			if err != nil {
@@ -241,37 +269,42 @@ func (d *driver) WriteStream(ctx context.Context, path string, offset int64, rea
 			start += d.ChunkSize
 			end += d.ChunkSize
 		}
-
-	} else {
-		uploadContext, err = d.Api.InitMultipartUpload(d.ossPath(path), d.getContentType())
-		if err != nil {
-			return 0, err
+		// we need to fill zero after the end of file
+		if offset > length {
+			zeroChunkSize = offset - length
 		}
 	}
 
-	buffer := make([]byte, d.ChunkSize)
-	totalRead = 0
+	// ok, we have enough data to upload
+	mr := io.MultiReader(bytes.NewReader(sourceLeftChunk), &io.LimitedReader{&ZeroReader{}, zeroChunkSize}, reader)
+
+	var buffer bytes.Buffer
+	var totalRead int64
 	for {
-		n, err := reader.Read(buffer)
-		if err != nil && err != io.EOF {
-			return totalRead, parseError(path, err)
+		buffer.Reset()
+		n, ioerr := io.CopyN(&buffer, mr, d.ChunkSize)
+
+		if ioerr != nil && ioerr != io.EOF {
+			return 0, parseError(path, err)
 		}
-		if n == 0 {
-			break
-		}
-		err = d.Api.UploadMultipart(uploadContext, buffer[:n], partNumber)
+
+		err = d.Api.UploadMultipart(uploadContext, buffer.Bytes(), partNumber)
 		if err != nil {
 			return 0, parseError(path, err)
 		}
+		totalRead += n
+		if ioerr == io.EOF {
+			break
+		}
 		partNumber++
-		totalRead += int64(n)
+
 	}
 	err = d.Api.CompleteMultipart(uploadContext)
 	if err != nil {
-		return totalRead, parseError(path, err)
+		return 0, parseError(path, err)
 	}
 
-	return totalRead, nil
+	return totalRead - int64(len(sourceLeftChunk)) - zeroChunkSize, nil
 }
 
 // Stat retrieves the FileInfo for the given path, including the current size

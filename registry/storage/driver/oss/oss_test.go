@@ -1,10 +1,10 @@
 package oss
 
 import (
-	//log "github.com/Sirupsen/logrus"
 	storagedriver "github.com/docker/distribution/registry/storage/driver"
 	"github.com/docker/distribution/registry/storage/driver/testsuites"
 	"gopkg.in/check.v1"
+	"io/ioutil"
 	"os"
 	"strconv"
 	"testing"
@@ -16,17 +16,22 @@ func Test(t *testing.T) { check.TestingT(t) }
 type OssDriverConstructor func() (*Driver, error)
 
 func init() {
-	//log.SetLevel(log.DebugLevel)
 	accessKey := os.Getenv("OSS_ACCESS_KEY")
 	secretKey := os.Getenv("OSS_SECRET_KEY")
 	bucket := os.Getenv("OSS_BUCKET")
 	region := os.Getenv("OSS_REGION")
-	rootDirectory := os.Getenv("OSS_ROOT_DIRECTORY")
 	chunkSizeStr := os.Getenv("OSS_CHUNK_SIZE")
 	chunkSize, err := strconv.ParseInt(chunkSizeStr, 0, 64)
 	if err != nil {
 		chunkSize = defaultChunkSize
 	}
+	//a tricky way to get a random file name
+	root, err := ioutil.TempDir("", "driver-")
+	if err != nil {
+		panic(err)
+	}
+	defer os.Remove(root)
+
 	ossDriverConstructor := func() (*Driver, error) {
 
 		parameters := DriverParameters{
@@ -34,7 +39,7 @@ func init() {
 			secretKey,
 			bucket,
 			region,
-			rootDirectory,
+			root,
 			chunkSize,
 		}
 

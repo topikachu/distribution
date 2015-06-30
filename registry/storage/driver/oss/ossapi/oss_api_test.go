@@ -1,13 +1,13 @@
-package oss
+package ossapi
 
 import (
 	"bytes"
-	//"crypto/rand"
-	//"encoding/hex"
-	"encoding/json"
+	"fmt"
 	log "github.com/Sirupsen/logrus"
 	"math/rand"
+	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -73,28 +73,35 @@ var fileNameForList = []string{
 }
 
 func TestMain(m *testing.M) {
-	rand.Seed(time.Now().UTC().UnixNano())
-	file, err := os.Open("config.json")
-	if err != nil {
-		panic(err)
-	}
-	decoder := json.NewDecoder(file)
-	err = decoder.Decode(&config)
-	if err != nil {
-		panic(err)
+
+	accessKey := os.Getenv("OSS_ACCESS_KEY")
+	secretKey := os.Getenv("OSS_SECRET_KEY")
+	bucket := os.Getenv("OSS_BUCKET")
+	region := os.Getenv("OSS_REGION")
+	logLevel := os.Getenv("OSS_LOG_LEVEL")
+	secure, _ := strconv.ParseBool(os.Getenv("OSS_SECURE"))
+
+	if accessKey == "" || secretKey == "" || bucket == "" || region == "" {
+		fmt.Printf("the env \naccessKey:%s\nsecretKey:%s\nbucket:%s\nregion:%s", accessKey, secretKey, bucket, region)
+		os.Exit(0)
 	}
 
-	if config.AccessKeyId == "" || config.AccessKeySecret == "" || config.Region == "" || config.Bucket == "" {
-		panic("config.json is not valid")
-	}
+	config.AccessKeyId = accessKey
+	config.AccessKeySecret = secretKey
+	config.Bucket = bucket
+	config.Region = region
+	config.LogLevel = logLevel
+
+	rand.Seed(time.Now().UTC().UnixNano())
+
 	setLogLevelFromConfig()
 
 	contents = bytes.NewBufferString(randSeq(1024 * 1024)).Bytes()
-	api = New(config.Region, config.AccessKeyId, config.AccessKeySecret, config.Bucket)
+	api = New(config.Region, config.AccessKeyId, config.AccessKeySecret, config.Bucket, secure)
 	if api == nil {
 		panic("Unable new oss")
 	}
-	err = api.PutObject(objectFile1, contents, "text/plain")
+	err := api.PutObject(objectFile1, contents, "text/plain")
 	log.Infof("put object %s", objectFile1)
 	if err != nil {
 		panic("Unable put object:" + err.Error())
@@ -451,4 +458,20 @@ func TestDelete(t *testing.T) {
 	if err != nil {
 		t.Errorf("delete failed", err)
 	}
+}
+
+func TestGeneratePresignedUrl(t *testing.T) {
+	url := api.GeneratePresignedUrl(objectFile1, 120)
+	fmt.Printf("=======url %s", url)
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Errorf("generatePresignedUrl failed", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(resp.Body)
+	if bytes.Compare(contents, buf.Bytes()) != 0 {
+		t.Errorf("the received content are not same as sent")
+	}
+
 }

@@ -1,4 +1,4 @@
-package oss
+package ossapi
 
 import (
 	"bytes"
@@ -16,6 +16,7 @@ import (
 
 type OssApi struct {
 	region, accessKeyId, accessKeySecret, bucket string
+	secure                                       bool
 }
 
 type part struct {
@@ -52,8 +53,8 @@ type request struct {
 	payload []byte
 }
 
-func New(region, accessKeyId, accessKeySecret, bucket string) *OssApi {
-	return &OssApi{region, accessKeyId, accessKeySecret, bucket}
+func New(region, accessKeyId, accessKeySecret, bucket string, secure bool) *OssApi {
+	return &OssApi{region, accessKeyId, accessKeySecret, bucket, secure}
 }
 
 func (api *OssApi) ListFiles(object, delimiter, marker string, max int) ([]string, []string, string, error) {
@@ -488,6 +489,23 @@ func (api *OssApi) Delete(objects ...string) error {
 		payload: data,
 	}
 	return api.query(req, nil)
+}
+
+func (api *OssApi) GeneratePresignedUrl(object string, expiration int64) string {
+	object = noramilizeObject(object)
+	req := &request{
+		method: "GET",
+		params: map[string][]string{
+			"Expires": {strconv.FormatInt(time.Now().Unix()+expiration*int64(time.Second), 10)},
+		},
+		object: object,
+	}
+
+	signature := api.sign(req)
+	req.params["OSSAccessKeyId"] = []string{api.accessKeyId}
+	req.params["Signature"] = []string{signature}
+
+	return api.baseUrl() + "/" + object + "?" + url.Values(req.params).Encode()
 }
 
 func noramilizeObject(object string) string {

@@ -1,8 +1,0 @@
-{
-    "AccessKeyId": "keyid",
-    "AccessKeySecret": "keysec"
-    "Region": "oss-cn-shenzhen",
-    "Bucket": "BucketName",
-    "LogLevel":"debug"
-
-}

@@ -23,7 +23,7 @@ import (
 	storagedriver "github.com/docker/distribution/registry/storage/driver"
 	"github.com/docker/distribution/registry/storage/driver/base"
 	"github.com/docker/distribution/registry/storage/driver/factory"
-	osssdk "github.com/topikachu/oss-mini-go-sdk/oss"
+	"github.com/docker/distribution/registry/storage/driver/oss/ossapi"
 	"io"
 	"io/ioutil"
 	"reflect"
@@ -42,6 +42,9 @@ const defaultChunkSize = 5 << 20
 // listMax is the largest amount of objects you can request from OSS in a list call
 const listMax = 1000
 
+// use https to communicate with oss by default
+const defaultSecure = true
+
 //DriverParameters A struct that encapsulates all of the driver parameters after all values have been set
 type DriverParameters struct {
 	AccessKeyId     string
@@ -50,6 +53,7 @@ type DriverParameters struct {
 	Region          string
 	RootDirectory   string
 	ChunkSize       int64
+	Secure          bool
 }
 
 func init() {
@@ -64,7 +68,7 @@ func (factory *ossDriverFactory) Create(parameters map[string]interface{}) (stor
 }
 
 type driver struct {
-	Api           *osssdk.OssApi
+	Api           *ossapi.OssApi
 	RootDirectory string
 	ChunkSize     int64
 }
@@ -114,6 +118,16 @@ func FromParameters(parameters map[string]interface{}) (*Driver, error) {
 		rootDirectory = ""
 	}
 
+	secure, ok := parameters["secure"]
+	var secureBool bool
+	if ok {
+		secureBool, ok = secure.(bool)
+	}
+	if !ok {
+		log.Warnf("secure parameter must be a bool value, %v invalid, use default value %t", defaultSecure)
+		secureBool = defaultSecure
+	}
+
 	chunkSize := int64(defaultChunkSize)
 	chunkSizeParam, ok := parameters["chunksize"]
 	if ok {
@@ -146,6 +160,7 @@ func FromParameters(parameters map[string]interface{}) (*Driver, error) {
 		fmt.Sprint(region),
 		fmt.Sprint(rootDirectory),
 		chunkSize,
+		secureBool,
 	}
 
 	return New(params)
@@ -154,7 +169,7 @@ func FromParameters(parameters map[string]interface{}) (*Driver, error) {
 // New constructs a new Driver with the given AWS credentials, region, encryption flag, and
 // bucketName
 func New(params DriverParameters) (*Driver, error) {
-	api := osssdk.New(params.Region, params.AccessKeyId, params.AccessKeySecret, params.Bucket)
+	api := ossapi.New(params.Region, params.AccessKeyId, params.AccessKeySecret, params.Bucket, params.Secure)
 	d := &driver{
 		Api:           api,
 		RootDirectory: strings.Trim(params.RootDirectory, "/"),
@@ -432,7 +447,7 @@ func (d *driver) ossPath(path string) string {
 }
 
 func parseError(path string, err error) error {
-	if ossErr, ok := err.(*osssdk.Error); ok && ossErr.StatusCode == 404 {
+	if ossErr, ok := err.(*ossapi.Error); ok && ossErr.StatusCode == 404 {
 		return storagedriver.PathNotFoundError{Path: path}
 	}
 

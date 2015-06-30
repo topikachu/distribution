@@ -21,9 +21,13 @@ log:
 storage:
     cache:
         blobdescriptor: redis
-    filesystem:
-        rootdirectory: /var/lib/registry
-    maintenance:
+    oss:
+        rootdirectory: /docker/registry
+        accesskey: 45LM3549Fmqbs2qI
+        secretkey: ZtL1nbdFKzI89IB41o8SM6NROtoXyI
+        region: oss-cn-shenzhen
+        bucket: pikachu-sz
+        chunksize: 52428800
         uploadpurging:
             enabled: false
 http:

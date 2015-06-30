@@ -1,4 +1,4 @@
-package oss
+package ossapi
 
 import (
 	"bytes"
@@ -34,8 +34,8 @@ func (api *OssApi) prepare(req *request) error {
 		req.headers["Content-Length"] = []string{strconv.FormatInt(int64(len(req.payload)), 10)}
 	}
 
-	req.baseurl = fmt.Sprintf("http://%s.%s.aliyuncs.com", api.bucket, api.region)
-
+	req.baseurl = api.baseUrl()
+	log.Debugf("baseurl is %s", req.baseurl)
 	u, err := url.Parse(req.baseurl)
 	if err != nil {
 		return fmt.Errorf("bad oss endpoint URL %q: %v", req.baseurl, err)
@@ -44,8 +44,16 @@ func (api *OssApi) prepare(req *request) error {
 	req.headers["Date"] = []string{time.Now().In(time.UTC).Format(http.TimeFormat)}
 	//req.headers["Date"] = []string{"Thu, 25 Jun 2015 06:29:40 GMT"}
 
-	api.sign(req.method, req.object, req.params, req.headers)
+	api.sign(req)
 	return nil
+}
+
+func (api *OssApi) baseUrl() string {
+	var protocol = "http"
+	if api.secure {
+		protocol = "https"
+	}
+	return fmt.Sprintf("%s://%s.%s.aliyuncs.com", protocol, api.bucket, api.region)
 }
 
 // this method returns the http response body

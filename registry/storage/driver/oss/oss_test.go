@@ -20,10 +20,16 @@ func init() {
 	secretKey := os.Getenv("OSS_SECRET_KEY")
 	bucket := os.Getenv("OSS_BUCKET")
 	region := os.Getenv("OSS_REGION")
-	chunkSizeStr := os.Getenv("OSS_CHUNK_SIZE")
-	chunkSize, err := strconv.ParseInt(chunkSizeStr, 0, 64)
+	chunkSize := os.Getenv("OSS_CHUNK_SIZE")
+	chunkSizeInt, err := strconv.ParseInt(chunkSize, 0, 64)
+	secure := os.Getenv("OSS_SECURE")
 	if err != nil {
-		chunkSize = defaultChunkSize
+		chunkSizeInt = defaultChunkSize
+	}
+
+	secureBool, err := strconv.ParseBool(secure)
+	if err != nil {
+		secureBool = defaultSecure
 	}
 	//a tricky way to get a random file name
 	root, err := ioutil.TempDir("", "driver-")
@@ -40,7 +46,8 @@ func init() {
 			bucket,
 			region,
 			root,
-			chunkSize,
+			chunkSizeInt,
+			secureBool,
 		}
 
 		return New(parameters)

@@ -1,4 +1,4 @@
-package oss
+package ossapi
 
 import (
 	"crypto/hmac"
@@ -48,13 +48,16 @@ func getSortedKeySlice(m map[string][]string) []string {
 	return keys
 }
 
-func (api *OssApi) sign(method, object string, params, headers map[string][]string) {
+func (api *OssApi) sign(req *request) string {
 	var md5, ctype, date, xoss string
 	var xossHeaders, ossSubResources []string
+	if req.headers == nil {
+		req.headers = make(map[string][]string)
+	}
 
-	headerKeys := getSortedKeySlice(headers)
+	headerKeys := getSortedKeySlice(req.headers)
 	for _, k := range headerKeys {
-		v := headers[k]
+		v := req.headers[k]
 		k = strings.ToLower(k)
 		switch k {
 		case "content-md5":
@@ -75,9 +78,9 @@ func (api *OssApi) sign(method, object string, params, headers map[string][]stri
 	}
 
 	//var paramKeys:= range
-	paramKeys := getSortedKeySlice(params)
+	paramKeys := getSortedKeySlice(req.params)
 	for _, k := range paramKeys {
-		v := params[k]
+		v := req.params[k]
 		if ossSubResourceList[k] {
 			for _, vi := range v {
 				if vi == "" {
@@ -88,21 +91,24 @@ func (api *OssApi) sign(method, object string, params, headers map[string][]stri
 				}
 			}
 		}
+		if k == "Expires" {
+			date = req.params[k][0]
+		}
 	}
-	canonicalPath := "/" + api.bucket + "/" + object
+	canonicalPath := "/" + api.bucket + "/" + req.object
 	if len(ossSubResources) > 0 {
 		sort.StringSlice(ossSubResources).Sort()
 		canonicalPath = canonicalPath + "?" + strings.Join(ossSubResources, "&")
 	}
 
-	payload := method + "\n" + md5 + "\n" + ctype + "\n" + date + "\n" + xoss + canonicalPath
+	payload := req.method + "\n" + md5 + "\n" + ctype + "\n" + date + "\n" + xoss + canonicalPath
 	hash := hmac.New(sha1.New, []byte(api.accessKeySecret))
 	hash.Write([]byte(payload))
 	signature := make([]byte, b64.EncodedLen(hash.Size()))
 	b64.Encode(signature, hash.Sum(nil))
-	headers["Authorization"] = []string{"OSS " + api.accessKeyId + ":" + string(signature)}
+	req.headers["Authorization"] = []string{"OSS " + api.accessKeyId + ":" + string(signature)}
 
 	log.Debugf("Signature payload: %q", payload)
 	log.Debugf("Signature: %q", signature)
-
+	return string(signature)
 }

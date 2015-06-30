@@ -29,6 +29,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const driverName = "oss"
@@ -439,7 +440,25 @@ func (d *driver) Delete(ctx context.Context, path string) error {
 // URLFor returns a URL which may be used to retrieve the content stored at the given path.
 // May return an UnsupportedMethodErr in certain StorageDriver implementations.
 func (d *driver) URLFor(ctx context.Context, path string, options map[string]interface{}) (string, error) {
-	return "", storagedriver.ErrUnsupportedMethod
+
+	methodString := "GET"
+	method, ok := options["method"]
+	if ok {
+		methodString, ok = method.(string)
+		if !ok || (methodString != "GET" && methodString != "HEAD") {
+			return "", storagedriver.ErrUnsupportedMethod
+		}
+	}
+
+	expiresTime := time.Now().Add(20 * time.Minute)
+	expires, ok := options["expiry"]
+	if ok {
+		et, ok := expires.(time.Time)
+		if ok {
+			expiresTime = et
+		}
+	}
+	return d.Api.GeneratePresignedUrl(d.ossPath(path), methodString, expiresTime), nil
 }
 
 func (d *driver) ossPath(path string) string {

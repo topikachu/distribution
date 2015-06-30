@@ -491,12 +491,12 @@ func (api *OssApi) Delete(objects ...string) error {
 	return api.query(req, nil)
 }
 
-func (api *OssApi) GeneratePresignedUrl(object string, expiration int64) string {
+func (api *OssApi) GeneratePresignedUrl(object, method string, expiresTime time.Time) string {
 	object = noramilizeObject(object)
 	req := &request{
-		method: "GET",
+		method: method,
 		params: map[string][]string{
-			"Expires": {strconv.FormatInt(time.Now().Unix()+expiration*int64(time.Second), 10)},
+			"Expires": {strconv.FormatInt(int64(expiresTime.Unix()), 10)},
 		},
 		object: object,
 	}

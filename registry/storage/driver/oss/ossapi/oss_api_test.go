@@ -460,9 +460,9 @@ func TestDelete(t *testing.T) {
 	}
 }
 
-func TestGeneratePresignedUrl(t *testing.T) {
-	url := api.GeneratePresignedUrl(objectFile1, 120)
-	fmt.Printf("=======url %s", url)
+func TestGeneratePresignedUrlGet(t *testing.T) {
+	exp := time.Now().Add(2 * time.Minute)
+	url := api.GeneratePresignedUrl(objectFile1, "GET", exp)
 	resp, err := http.Get(url)
 	if err != nil {
 		t.Errorf("generatePresignedUrl failed", err)
@@ -472,6 +472,20 @@ func TestGeneratePresignedUrl(t *testing.T) {
 	buf.ReadFrom(resp.Body)
 	if bytes.Compare(contents, buf.Bytes()) != 0 {
 		t.Errorf("the received content are not same as sent")
+	}
+
+}
+
+func TestGeneratePresignedUrlHead(t *testing.T) {
+	exp := time.Now().Add(2 * time.Minute)
+	url := api.GeneratePresignedUrl(objectFile1, "HEAD", exp)
+	resp, err := http.Head(url)
+	if err != nil {
+		t.Errorf("generatePresignedUrl failed", err)
+	}
+	receivedContentLength, _ := strconv.Atoi(resp.Header.Get("Content-Length"))
+	if receivedContentLength != len(contents) {
+		t.Errorf("wrong content lenth, expected is %d, actual is %d", len(contents), receivedContentLength)
 	}
 
 }
